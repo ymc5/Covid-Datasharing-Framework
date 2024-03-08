@@ -29,7 +29,7 @@ A demonstration utilizing a sample database showcases the practical implementati
 - **Preemptive Healthcare Planning**: Empowering healthcare professionals to anticipate and prepare for future COVID outbreaks based on data-driven predictions.
 
 ### Conclusion
-This repository serves as a valuable resource for healthcare stakeholders seeking to implement effective data-sharing initiatives amidst the COVID-19 pandemic. By adopting the proposed framework, institutions can foster collaboration, leverage collective insights, and ultimately enhance the quality of care for COVID patients.
+By adopting the proposed framework, institutions can foster collaboration, leverage collective insights, and ultimately enhance the quality of care for COVID patients.
 
 ---
 
