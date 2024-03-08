@@ -1,0 +1,145 @@
+---
+title: "Proposal for Covid Data Sharing"
+format: html
+---
+
+
+## OVERVIEW
+
+-   Following the COVID pandemic, it has become important that multiple healthcare providers collaborate on COVID data analysis, to improve the overall clinical care for COVID patients.
+-   It is therefore important that related providers  be able to share COVID patients data.
+-   Since each providers use different data models and tool, I hereby propose the following database sharing process/system for further collaboration.
+-   For this proposal, following database was used for demonstration.
+
+```{r}
+echo=TRUE
+message=FALSE
+warning= FALSE
+library(tidyverse)     
+library(RPostgres)     
+library(connections)   
+library(keyring)    
+
+library(yaml)
+config <- yaml::read_yaml("config.yaml")
+# Loading Synthea dataset
+con <- connection_open(RPostgres::Postgres(),
+          host=config$host,
+          dbname=config$dbname,
+          user=config$user,
+          password=config$password)
+```
+
+## PROPOSED DATA SHARING PROCESS
+
+#### What patients should be included?
+
+-   Considering that the purpose of this project is COVID data analysis, clear and objective standard needs to be applied to filter the COVID patients.
+-   Therefore, only patients who were confirmed positive by COVID testing should be included.
+- In order to avoid ambiguity in standard and for the integrity of data quality, patients with COVID-like symptom descriptions or suspected COVID should be excluded from data analysis.
+
+```{sql connection=con}
+/* Filter patients with COVID diagnosis */
+
+SELECT COUNT(*) FROM observations /* code from in-class demo */
+    WHERE code = '94531-1' AND value = 'Detected (qualifier value)'
+```
+
+#### What data information should be included?
+
+-   Other than patient IDs, following additional data should be available.
+    -   Information regarding patient  
+        + Demographic (from patients table)
+            + Age : age at the point of diagnosis -  (observations.date)-(patients.birthdate)
+            + Gender
+        + SSN (to share information with other hospitals)
+        + Race
+        + Ethnicity
+        + Address (zip)
+    -   Information regarding COVID
+      + Diagnosis date (observations.date)
+      + Immunization information (immunizations.description)
+- In order to include the aforementioned information, the following query can be applied to the database. 
+
+```{sql connection=con}
+/* All data are connected with patient ID. First filter COVID patients from observations table (only those who were tested and resulted in positive.) */
+WITH covid_patient AS 
+  (SELECT * FROM observations 
+    WHERE code = '94531-1' AND value = 'Detected (qualifier value)')
+
+/* Select information required for analysis from different tables. */
+/* In order to analyze COVID prevalence based on year and month, date datatype are separated into different columns.
+Also, age of the time of diagnosis was calculated using date data from observations table and patients table (birth date).
+*/
+SELECT 
+MD5(cp.patient), EXTRACT (year FROM cp.date) AS test_positive_year, EXTRACT(month FROM cp.date) AS test_positive_month, EXTRACT(day FROM cp.date) AS test_positive_day, (DATE_PART('year', cp.date) - DATE_PART('year', p.birthdate)) AS diagnosed_age, p.birthdate, p.ssn, p.race, p.ethnicity, p.zip, i.description
+FROM covid_patient AS cp
+INNER JOIN
+patient AS p
+ON cp.patient = p.id
+INNER JOIN immunizations AS i
+ON cp.patient=i.patient
+
+
+
+
+```
+
+#### How to ensure all data from 3 providers are analyzed as a single data set?  
+
+- First, data need to be filtered so that only required information is shared with other providers.
+- After sorting out unnecessary data, it should be converted into a data type in order to make it possible to process the data from a single database management system. 
+- Each providers will have access to this separate database management system  which will be managed separately from the database management system each providers are using, and will be used for this COVID collaborative study only.
+- This data transferring process is implemented to ensure that only information each providers have agreed to share will be open to the other providers. 
+- SSN data from the databse can be used to confirm if there are any duplicate data (patient) between different providers.
+- After the above tables are shared and merged into a single data, analyses can be done such as in the following example. In this example, average year of COVID diagnosis can be calculated for each month. 
+
+```{sql connection=con}
+WITH covid_patient AS 
+(
+  SELECT * 
+  FROM observations 
+  WHERE code = '94531-1' AND value = 'Detected (qualifier value)'
+), 
+sorted_data AS
+(
+  SELECT 
+    cp.patient, 
+    EXTRACT (year FROM cp.date) AS test_positive_year, 
+    EXTRACT(month FROM cp.date) AS test_positive_month, 
+    EXTRACT(day FROM cp.date) AS test_positive_day, 
+    (DATE_PART('year', cp.date) - DATE_PART('year', p.birthdate)) AS diagnosed_age, 
+    p.birthdate, 
+    p.ssn, 
+    p.race, 
+    p.ethnicity, 
+    p.zip,  
+    i.description AS covid_vaccine
+  FROM covid_patient AS cp
+  INNER JOIN patient AS p
+  ON cp.patient = p.id
+  INNER JOIN immunizations AS i
+  ON cp.patient=i.patient
+)
+SELECT 
+  test_positive_month, 
+  AVG(diagnosed_age) AS average_diagnosed_age 
+FROM sorted_data
+GROUP BY test_positive_month;
+
+
+```
+
+
+#### What outcomes should be tracked?  
+
+- For infectious diseases (such as COVID) data study, both geographical and time factors should be considered. 
+- With real-time access to this COVID database, providers will be able to monitor patterns of COVID outbreak based on time and locations. 
+- Also, retrospective studies will be available in the area, such as learning whether there are specific months within a year that COVID cases increase substantially compared to other months of the year. This study will enable professionals to plan ahead of those months, to warn the public and implement necessary healthcare policies during that season if necessary. 
+- COVID vaccination history can be considered and could be analyzed to see whether vaccination helped in preventing COVID infections or not, and to see whether the severity of COVID symptoms had any relationship with vaccination history (COVID symptom data need to be included in the futuer for this analysis). 
+
+## SUMMARY
+
+- To ensure that all providers have access to the database and to ensure that only necessary information are shared, a separate database management system is proposed. 
+- This new database system will include information required for COVID analysis, such as demographics, location, and vaccination history. 
+- Providers will be able to analyze the data, and may be able to predict future trends of COVID outbreaks, which will benefit from the aspect of preparing for high-incidence rate seasons, such as placing additional staff, ordering required materials/medications ahead, and so on. 
